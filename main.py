@@ -544,9 +544,8 @@ class MonteCarlo:
         def other(self):
             return self.other_player
 
-    def __init__(self):
+    def __init__(self, training_iterations=0):
 
-        '''
         self.start = ejw45_Board(np.array([['.', '.', '.', 'q', '.', '.', 'q', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
@@ -557,12 +556,6 @@ class MonteCarlo:
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', 'Q', '.', '.', 'Q', '.', '.', '.']]))
-        '''
-
-        self.start = ejw45_Board(np.array([['Q', '.', '.', 'q'],
-                                           ['.', '.', '.', '.'],
-                                           ['.', '.', '.', '.'],
-                                           ['Q', '.', '.', 'q']]))
 
         self.white_player = MonteCarlo.Player(True)
         self.black_player = MonteCarlo.Player(False)
@@ -571,10 +564,13 @@ class MonteCarlo:
 
         self.explored = dict()
 
-        if os.path.isfile('amazon.pickle'):
+        if os.path.isfile('ejw45_amazon.pickle'):
             print('reading in from file')
-            with open('amazon.pickle', 'rb') as handle:
+            with open('ejw45_amazon.pickle', 'rb') as handle:
                 self.explored = pickle.load(handle)
+
+        if training_iterations > 0:
+            self.train(training_iterations)
 
     def train(self, iterations):
         while iterations > 0:
@@ -583,7 +579,7 @@ class MonteCarlo:
 
             if iterations % 10 == 0:
                 print('{}: {}'.format(iterations, len(self.explored)))
-                self.write_to_file('amazon.pickle')
+                self.write_to_file('ejw45_amazon.pickle')
 
     def write_to_file(self, path):
         with open(path, 'wb') as handle:
@@ -665,12 +661,10 @@ class MonteCarlo:
             self.explored[state] = (wins, plays)
 
 
-ejw45_mc = MonteCarlo()
-ejw45_mc.train(iterations=1000000)
+ejw45_mc = MonteCarlo(100)
 
 
 def ejw45_bot(board):
-
     is_white = board.bWhite
 
     board = ejw45_Board(np.array(board.config))
