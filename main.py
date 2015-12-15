@@ -528,7 +528,7 @@ class ejw45_Board:
         return hash(str(self.board))
 
 
-class MonteCarlo:
+class ejw45_MonteCarlo:
     class Player:
         def __init__(self, white):
             self.path = []
@@ -557,8 +557,8 @@ class MonteCarlo:
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', 'Q', '.', '.', 'Q', '.', '.', '.']]))
 
-        self.white_player = MonteCarlo.Player(True)
-        self.black_player = MonteCarlo.Player(False)
+        self.white_player = ejw45_MonteCarlo.Player(True)
+        self.black_player = ejw45_MonteCarlo.Player(False)
         self.white_player.other_player = self.black_player
         self.black_player.other_player = self.white_player
 
@@ -661,14 +661,14 @@ class MonteCarlo:
             self.explored[state] = (wins, plays)
 
 
-ejw45_mc = MonteCarlo(100)
+ejw45_mc = ejw45_MonteCarlo(100)
 
 
 def ejw45_bot(board):
     is_white = board.bWhite
 
     board = ejw45_Board(np.array(board.config))
-    player = MonteCarlo.Player(is_white)
+    player = ejw45_MonteCarlo.Player(is_white)
 
     # Set a random move to be chosen if none of children boards are known
     boards, moves = board.moves(player)

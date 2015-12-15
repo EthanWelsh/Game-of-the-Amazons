@@ -15,3 +15,7 @@ The Game of the Amazons presents a rather difficult problem: the search space is
 
 
 If one did want to train the MCTS to a sufficient standard, it might be helpful to ensure that some percentage of the overall state space has been encountered by the model. See [this article](http://library.msri.org/books/Book42/files/snatzke.pdf) for a detailed explanation on exhaustive search and the total size of the state space for various sized boards.
+
+Directions
+----------
+If you wish to try your hand against my algorithm, simply copy and paste my code between the given lines into your implementation and change the configuration file accordingly. If you wish to use a pre-trained model, made sure the pickle file is named 'ejw45_amazon.pickle' as is inside the same directory that the program is being run from. If you wish to train the model, set the optional parameter in the ejw45_MonteCarlo constructor to the amount of simulations that you would like to run. The model will automatically pickle and save itself every 10 iterations to 'ejw45_amazon.pickle'.
