@@ -64,7 +64,6 @@ import re
 import sys
 import time
 
-
 # The Amazons class controls the flow of the game.
 # Its data include:
 # * size -- size of board: assume it's <= 10
@@ -427,30 +426,45 @@ def human(board):
 
 
 ###################### Your code between these two comment lines ####################################
-class SmartBoard:
+import os
+import random
+import numpy as np
+import pickle
 
+
+class ejw45_Board:
     def __init__(self, board):
-
-        self._board = board
-        self.board = np.matrix(self._board.config)
+        self.board = np.array(board)
         self.player_symbols = {True: 'Q', False: 'q'}
 
-    def moves(self, is_white=True):
+    def moves(self, player):
         """
         :param is_white: if the player in question is white or black
         :return: a set of all possible moves in the form of (queen_start, queen_end, arrow)
         """
+        boards = []
         moves = []
 
-        queen_moves = self.queen_moves(is_white)
+        queen_moves = self.queen_moves(player.white)
+
         for queen_move in queen_moves:
             source, destination = queen_move
+
+            # Temporarily move the queen so that arrow calculation can enter queen's previous position
+            self.board[source] = '.'
+            self.board[destination] = self.player_symbols[player.white]
+
             arrows = self.arrow_moves(destination)
 
             for arrow in arrows:
                 moves.append((source, destination, arrow))
+                boards.append(self.move_queen(source, destination).shoot_arrow(arrow))
 
-        return moves
+            # Move the queen back to her original position
+            self.board[source] = self.player_symbols[player.white]
+            self.board[destination] = '.'
+
+        return boards, moves
 
     def get_spot(self, start_position, direction):
         height, width = self.board.shape
@@ -488,7 +502,6 @@ class SmartBoard:
         return moves
 
     def queen_moves(self, is_white):
-
         moves = []
         height, width = self.board.shape
 
@@ -503,16 +516,177 @@ class SmartBoard:
     def arrow_moves(self, queen_end):
         return [move[1] for move in self.position_moves(queen_end)]
 
+    def move_queen(self, src, dst):
+        copy = np.copy(self.board)
+        copy[dst[0], dst[1]] = copy[src[0], src[1]]
+        copy[src[0], src[1]] = '.'
+        return ejw45_Board(copy)
+
+    def shoot_arrow(self, dst):
+        copy = np.copy(self.board)
+        copy[dst[0], dst[1]] = 'x'
+        return ejw45_Board(copy)
+
+    def __hash__(self):
+        return hash(self.board.data.tobytes())
+
+
+class MonteCarlo:
+
+    class Player:
+        def __init__(self, white):
+            self.path = []
+            self.white = white
+            self.other_player = None
+
+        def update(self, state):
+            self.path.append(state)
+
+        def clear(self):
+            self.path = []
+
+        def other(self):
+            return self.other_player
+
+    def __init__(self):
+
+        self.start = ejw45_Board(np.array([['.', '.', '.', 'q', '.', '.', 'q', '.', '.', '.'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['q', '.', '.', '.', '.', '.', '.', '.', '.', 'q'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['Q', '.', '.', '.', '.', '.', '.', '.', '.', 'Q'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
+                                           ['.', '.', '.', 'Q', '.', '.', 'Q', '.', '.', '.']]))
+
+        self.white_player = MonteCarlo.Player(True)
+        self.black_player = MonteCarlo.Player(False)
+        self.white_player.other_player = self.black_player
+        self.black_player.other_player = self.white_player
+
+        self.explored = dict()
+
+        if os.path.isfile('amazon.pickle'):
+            print('reading in from file')
+            with open('amazon.pickle', 'rb') as handle:
+                self.explored = pickle.load(handle)
+
+    def train(self, iterations=100000):
+        while iterations > 0:
+            self.simulate()
+            iterations -= 1
+
+            if iterations % 10:
+                print('{}: {}'.format(iterations, len(self.explored)))
+                self.write_to_file('amazon.pickle')
+
+    def write_to_file(self, path):
+        with open(path, 'wb') as handle:
+            pickle.dump(self.explored, handle)
+
+    def select(self, current_state, player):
+
+        max_state = None
+        max_score = None
+
+        child_boards, _ = current_state.moves(player)
+
+        # Return the next unexplored node. If none exist, recurse on the best scoring child
+        for child in child_boards:
+
+            # If you've found an unexplored node
+            if child not in self.explored:
+                return current_state, player
+
+            wins, plays = self.explored[child]
+            if max_score is None or wins / plays > max_score:
+                max_score = wins / plays
+                max_state = child
+
+        player.update(max_state)
+
+        return self.select(max_state, player.other())
+
+    def expand(self, current_state, player):
+        shuffled, _ = current_state.moves(player)
+        random.shuffle(shuffled)
+        for child in shuffled:
+            if child not in self.explored:
+                player.update(child)
+                return child, player.other()
+
+    def simulate(self):
+        selected, player = self.select(self.start, self.white_player)
+        expand, player = self.expand(selected, player)
+
+        current = expand
+        game_end = False
+
+        loser = None
+        winner = None
+
+        while not game_end:
+            boards, _ = current.moves(player)
+
+            if not boards:
+                loser = player
+                winner = player.other()
+                break
+
+            current = random.choice(boards)
+            player.update(current)
+
+            player = player.other()
+
+        for state in loser.path:
+            if state in self.explored:
+                wins, plays = self.explored[state]
+            else:
+                wins = plays = 0
+
+            plays += 1
+            self.explored[state] = (wins, plays)
+
+        for state in winner.path:
+            if state in self.explored:
+                wins, plays = self.explored[state]
+            else:
+                wins = plays = 0
+
+            wins += 1
+            plays += 1
+
+            self.explored[state] = (wins, plays)
+
+ejw45_mc = MonteCarlo()
+ejw45_mc.train(iterations=1000)
+
 
 def ejw45_bot(board):
-    sb = SmartBoard(board)
+    is_white = board.bWhite
+    player = MonteCarlo.Player(is_white)
+    board = ejw45_Board(np.array(board.config))
 
-    return sb.moves(board.bWhite)[0]
+    boards, moves = board.moves(player)
 
+    # Set a random move to be chosen if none of children boards are known
+    max_move = random.choice(moves)
+    max_score = 0.0
 
-    # board.count_areas()
-    # board.valid_path()
-    # board.
+    for index, board in enumerate(boards):
+        move = moves[index]
+
+        if board in ejw45_mc.explored:
+            win_count, play_count = ejw45_mc.explored[board]
+            score = float(win_count) / float(play_count)
+
+            if score > max_score:
+                max_score = score
+                max_move = move
+
+    return max_move
 
 
 ###################### Your code between these two comment lines ####################################
