@@ -64,6 +64,7 @@ import re
 import sys
 import time
 
+
 # The Amazons class controls the flow of the game.
 # Its data include:
 # * size -- size of board: assume it's <= 10
@@ -83,9 +84,6 @@ import time
 # * update: this function tries out the move on a temporary board.
 #   if the move is valid, the real board will be updated.
 # * end_turn: just get the score from the board class
-from enum import IntEnum
-
-import numpy as np
 
 
 class Amazons:
@@ -430,6 +428,7 @@ import os
 import random
 import numpy as np
 import pickle
+from math import log, sqrt
 
 
 class ejw45_Board:
@@ -449,20 +448,13 @@ class ejw45_Board:
 
         for queen_move in queen_moves:
             source, destination = queen_move
+            moved_board = self.move_queen(self.board, source, destination)
 
-            # Temporarily move the queen so that arrow calculation can enter queen's previous position
-            self.board[source] = '.'
-            self.board[destination] = self.player_symbols[player.white]
-
-            arrows = self.arrow_moves(destination)
+            arrows = self.arrow_moves(moved_board, destination)
 
             for arrow in arrows:
                 moves.append((source, destination, arrow))
-                boards.append(self.move_queen(source, destination).shoot_arrow(arrow))
-
-            # Move the queen back to her original position
-            self.board[source] = self.player_symbols[player.white]
-            self.board[destination] = '.'
+                boards.append(self.shoot_arrow(moved_board.board, arrow))
 
         return boards, moves
 
@@ -513,26 +505,30 @@ class ejw45_Board:
 
         return moves
 
-    def arrow_moves(self, queen_end):
-        return [move[1] for move in self.position_moves(queen_end)]
+    def arrow_moves(self, board, queen_end):
+        return [move[1] for move in board.position_moves(queen_end)]
 
-    def move_queen(self, src, dst):
-        copy = np.copy(self.board)
-        copy[dst[0], dst[1]] = copy[src[0], src[1]]
-        copy[src[0], src[1]] = '.'
+    @staticmethod
+    def move_queen(board, src, dst):
+        copy = np.copy(board)
+        copy[dst] = copy[src]
+        copy[src] = '.'
         return ejw45_Board(copy)
 
-    def shoot_arrow(self, dst):
-        copy = np.copy(self.board)
-        copy[dst[0], dst[1]] = 'x'
+    @staticmethod
+    def shoot_arrow(board, dst):
+        copy = np.copy(board)
+        copy[dst] = 'x'
         return ejw45_Board(copy)
+
+    def __eq__(x, y):
+        return np.array_equal(x.board, y.board)
 
     def __hash__(self):
-        return hash(self.board.data.tobytes())
+        return hash(str(self.board))
 
 
 class MonteCarlo:
-
     class Player:
         def __init__(self, white):
             self.path = []
@@ -550,6 +546,7 @@ class MonteCarlo:
 
     def __init__(self):
 
+        '''
         self.start = ejw45_Board(np.array([['.', '.', '.', 'q', '.', '.', 'q', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
@@ -560,6 +557,12 @@ class MonteCarlo:
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', '.', '.', '.', '.', '.', '.', '.'],
                                            ['.', '.', '.', 'Q', '.', '.', 'Q', '.', '.', '.']]))
+        '''
+
+        self.start = ejw45_Board(np.array([['Q', '.', '.', 'q'],
+                                           ['.', '.', '.', '.'],
+                                           ['.', '.', '.', '.'],
+                                           ['Q', '.', '.', 'q']]))
 
         self.white_player = MonteCarlo.Player(True)
         self.black_player = MonteCarlo.Player(False)
@@ -573,12 +576,12 @@ class MonteCarlo:
             with open('amazon.pickle', 'rb') as handle:
                 self.explored = pickle.load(handle)
 
-    def train(self, iterations=100000):
+    def train(self, iterations):
         while iterations > 0:
             self.simulate()
             iterations -= 1
 
-            if iterations % 10:
+            if iterations % 10 == 0:
                 print('{}: {}'.format(iterations, len(self.explored)))
                 self.write_to_file('amazon.pickle')
 
@@ -598,11 +601,12 @@ class MonteCarlo:
 
             # If you've found an unexplored node
             if child not in self.explored:
+                player.update(current_state)
                 return current_state, player
 
             wins, plays = self.explored[child]
             if max_score is None or wins / plays > max_score:
-                max_score = wins / plays
+                max_score = (wins / plays) + (1.4 * sqrt(log(plays) / plays))
                 max_state = child
 
         player.update(max_state)
@@ -647,6 +651,7 @@ class MonteCarlo:
                 wins = plays = 0
 
             plays += 1
+
             self.explored[state] = (wins, plays)
 
         for state in winner.path:
@@ -657,21 +662,23 @@ class MonteCarlo:
 
             wins += 1
             plays += 1
-
             self.explored[state] = (wins, plays)
 
+
 ejw45_mc = MonteCarlo()
-ejw45_mc.train(iterations=1000)
+ejw45_mc.train(iterations=1000000)
 
 
 def ejw45_bot(board):
-    is_white = board.bWhite
-    player = MonteCarlo.Player(is_white)
-    board = ejw45_Board(np.array(board.config))
 
-    boards, moves = board.moves(player)
+    is_white = board.bWhite
+
+    board = ejw45_Board(np.array(board.config))
+    player = MonteCarlo.Player(is_white)
 
     # Set a random move to be chosen if none of children boards are known
+    boards, moves = board.moves(player)
+
     max_move = random.choice(moves)
     max_score = 0.0
 
@@ -696,8 +703,10 @@ def main():
         fname = sys.argv[1]
     else:
         fname = input("setup file name?")
-    game = Amazons(fname)
-    game.play()
+
+    while True:
+        game = Amazons(fname)
+        game.play()
 
 
 if __name__ == "__main__":
